@@ -1,0 +1,16 @@
+gfortran Question1.f90 -o Question1
+
+if [ -f "p1.out" ]
+then
+    echo "p1.out file already exists ... removing"
+    rm p1.out
+fi
+for i in {1..100}
+do
+    echo $i'/10' | bc -l > p1.in
+    INPUT_FILE="p1.in"
+    while read param1
+    do
+        echo $param1 | ./Question1 >> "p1.out"
+    done < $INPUT_FILE
+done
