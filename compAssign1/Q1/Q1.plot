@@ -6,4 +6,4 @@ set samp 500
 set ylabel "f(x)"
 set xlabel "x"
 
-p "p1.out" t "Discrete (Fortran)" lc 2, log(x)/(1-x) lc 7 t "Continuous (GNUplot)"
+p "p1.out" t "Discrete (Fortran)" with points pt 7 lc 2, log(x)/(1-x) lc 7 t "Continuous (GNUplot)"
