@@ -6,10 +6,10 @@ integer :: N, outunit, i, m, aimNodes, nodes, j
 real*8 :: omega, dx, Emax, Emin, xmax, xmin, E, tol, delE
 !______CONSTANTS & INITIALISATION
 omega=1
-dx=0.01
+dx=0.001
 xmax=5
 xmin=-5
-tol=0.01
+tol=0.0001
 nodes=666
 N=ceiling((xmax-xmin)/dx)
 m=ceiling(N/2.0)-2
@@ -20,45 +20,33 @@ enddo
 call potential(x,V,N,omega)
 !______CONSTANTS & INITIALISATION
 
+do j=0, 3
 
-Emax=4
-Emin=0
-aimNodes=1
-
-!______Checking number of nodes
-do while (nodes/=aimNodes)
-    E=(Emin+Emax)/2
-    call numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
-    call numerovBack(V, psimN, dx, E, N, m, x, aimNodes)
-    call countNodes(N, m, psi1m, psimN, nodes)
-    print*, E, Emin, Emax
-    print*, nodes
-    if (nodes>aimNodes) then
-        Emax=E
-    elseif (nodes<aimNodes) then
-        Emin=E
-    endif
-enddo
-!______Checking numer of nodes
-
-
-!______Cooley Energy Correction
-
-delE=0
-do i=1, m
-    psi(i)=psi1m(i)
-enddo
-do i=1, N-m
-    psi(m+i)=psimN(i)
-enddo
-call cooleyE(V, psi, dx, E, N, m, delE)
-print*, delE
-
-do while(abs(delE)>tol)
-    E=E+abs(delE)
-    print*, E
-    call numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
-    call numerovBack(V, psimN, dx, E, N, m, x, aimNodes) 
+    Emax=4
+    Emin=0
+    aimNodes=j
+    
+    !______Checking number of nodes
+    do while (nodes/=aimNodes)
+        E=(Emin+Emax)/2
+        call numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
+        call numerovBack(V, psimN, dx, E, N, m, x, aimNodes)
+        call countNodes(N, m, psi1m, psimN, nodes)
+        print*, E, Emin, Emax
+        print*, nodes
+        if (nodes>aimNodes) then
+            Emax=E
+        elseif (nodes<aimNodes) then
+            Emin=E
+        endif
+    enddo
+    print*, "Energy after node correct", E
+    !______Checking numer of nodes
+    
+    
+    !______Cooley Energy Correction
+    
+    delE=0
     do i=1, m
         psi(i)=psi1m(i)
     enddo
@@ -66,23 +54,38 @@ do while(abs(delE)>tol)
         psi(m+i)=psimN(i)
     enddo
     call cooleyE(V, psi, dx, E, N, m, delE)
+    print*, delE
+    
+    do while(abs(delE)>tol)
+        print*, "E", E
+        E=E-(delE)
+        print*, "delE", delE
+        call numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
+        call numerovBack(V, psimN, dx, E, N, m, x, aimNodes) 
+        do i=1, m
+            psi(i)=psi1m(i)
+        enddo
+        do i=1, N-m
+            psi(m+i)=psimN(i)
+        enddo
+        call cooleyE(V, psi, dx, E, N, m, delE)
+    enddo
+    
+    !_____Cooley Energy Correction
+    
+    !_____Format and write to file
+    
+    f='(I2.2)' !format
+    write(conv,f) aimNodes !converts N to string
+    
+    open(newunit=outunit, file='psi'//trim(conv)//'.out', action="write")
+    do i=1, N
+        write(outunit, *) x(i), V(i), psi(i)
+    enddo
+    close(outunit)   
+    
+    !_____Formart and write to file
 enddo
-
-!_____Cooley Energy Correction
-
-!_____Format and write to file
-
-f='(I2.2)' !format
-write(conv,f) aimNodes !converts N to string
-
-open(newunit=outunit, file='psi'//trim(conv)//'.out', action="write")
-do i=1, N
-    write(outunit, *) x(i), V(i), psi(i)
-enddo
-close(outunit)   
-
-!_____Formart and write to file
-
 end program Q2
 
 
@@ -106,7 +109,6 @@ subroutine numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
         write(outunit,*) x(i), V(i), psi1m(i)
     enddo
     close(outunit)
-    print*, size(psi1m), m, N, "------------"
 end subroutine numerovForw
 
 subroutine numerovBack(V, psimN, dx, E, N, m, x, aimNodes)
@@ -133,7 +135,6 @@ subroutine numerovBack(V, psimN, dx, E, N, m, x, aimNodes)
         write(outunit,*) x(i+m), V(i+m), psimN(i)
     enddo
     close(outunit)
-    print*, size(psimN), m, N, "------------"
 end subroutine numerovBack
 
 subroutine potential(x,V,N,omega)
@@ -152,7 +153,7 @@ subroutine countNodes(N, m, psi1m, psimN, nodes)
     real*8, dimension(m), intent(in) :: psi1m
     real*8, dimension(N-m), intent(in) :: psimN
     integer, intent(out) :: nodes
-    integer :: i
+    integer :: i, outunit
     nodes=0
     do i=2, m
         if(psi1m(i-1)*psi1m(i)<0) then 
@@ -166,6 +167,15 @@ subroutine countNodes(N, m, psi1m, psimN, nodes)
             nodes=nodes+1
         endif
     enddo
+    open(newunit=outunit, file="noded.out", action="write")
+    do i=1, N
+        if(i<=m) then
+            write(outunit,*) psi1m(i)
+        else
+            write(outunit,*) psimN(i-m)
+        endif
+    enddo
+    close(outunit)
 end subroutine countNodes
 
 subroutine cooleyE(V, psi, dx, E, N, m, delE)
@@ -178,8 +188,10 @@ subroutine cooleyE(V, psi, dx, E, N, m, delE)
 
     g=2*(V-E)
     Y=(1-dx**2/12*g)*psi
-    delE=psi(m)/sum(psi**2)*(-0.5*(Y(m+1)-2*Y(m)+Y(m-1))/(dx**2)+(V(m)-E)*psi(m))
-!    print*, psi(m+50)/sum(psi**2)*(-0.5*(Y(m+50+1)-2*Y(m+50)+Y(m-1+50))/(dx**2)+(V(m+50)-E)*psi(m+50))
-!    print*, psi(m+101)/sum(psi**2)*(-0.5*(Y(m+1+101)-2*Y(m+101)+Y(m-1+101))/(dx**2)+(V(m+101)-E)*psi(m+101))
-!    print*, psi(m), psi(m+1), psi(m-1)
+    delE=psi(m)/sum((psi)**2)*(-0.5*(Y(m+1)-2*Y(m)+Y(m-1))/(dx**2)+(V(m)-E)*psi(m))
+    print*, "--------X---------"
+    print*, psi(m+50)/sum(psi**2)*(-0.5*(Y(m+50+1)-2*Y(m+50)+Y(m-1+50))/(dx**2)+(V(m+50)-E)*psi(m+50))
+    print*, psi(m+101)/sum(psi**2)*(-0.5*(Y(m+1+101)-2*Y(m+101)+Y(m-1+101))/(dx**2)+(V(m+101)-E)*psi(m+101))
+    print*, psi(m), psi(m+1), psi(m-1)
+    print*, "--------X---------"
 end subroutine cooleyE
