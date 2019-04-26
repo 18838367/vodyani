@@ -8,20 +8,23 @@ real*8, allocatable, dimension(:) :: x, V, psi
 integer :: i, N, outunit, nodes, flag, j
 
 aimNodes=0
-dx=0.001
+
+dx=0.000
+read(*,*) dx
 omega=1
 flag=0
 xmin=-5
 xmax=5
 N=ceiling((xmax-xmin)/dx)
+print*, N, "NJNNNNNNNNN"
 allocate(x(N), V(N), psi(N))
 
 
 do j=0, 3
-    print*, "jjjjjjj"
+    print*, "Node Number"
     print*, j
     aimNodes=j
-    Emax=4
+    Emax=5
     Emin=0
     psi1=0
     psi2=(-1)**aimNodes*0.01
@@ -35,10 +38,10 @@ do j=0, 3
     
     
     E=(Emin+Emax)/2
-    call shoot(x, V, N, E, dx, psi, aimNodes)
+    call shoot(x, V, N, E, dx, psi, aimNodes, j)
     call countNodes(N, psi, nodes)
-    print*, E, Emin, Emax, psi(N)
-    print*, nodes
+!    print*, E, Emin, Emax, psi(N)
+!    print*, nodes
     if (nodes>aimNodes) then
         Emax=E
     elseif (nodes<aimNodes) then
@@ -47,20 +50,20 @@ do j=0, 3
     
     if(nodes==aimNodes) then
         if (psi(N)>0) then
-            print*, "psiHigh", psi(N)
+!            print*, "psiHigh", psi(N)
             Emin=E
         elseif (psi(N)<0) then 
             Emax=E
-            print*, "psiLow", psi(N)
+!            print*, "psiLow", psi(N)
         endif
     endif
     
     do while (abs(psi(N))>tol)
         E=(Emin+Emax)/2
-        call shoot(x, V, N, E, dx, psi, aimNodes)
+        call shoot(x, V, N, E, dx, psi, aimNodes, j)
         call countNodes(N, psi, nodes)
-        print*, E, Emin, Emax, psi(N)
-        print*, nodes
+!        print*, E, Emin, Emax, psi(N)
+!        print*, nodes
         if (nodes>aimNodes) then
             Emax=E
         elseif (nodes<aimNodes) then
@@ -78,13 +81,15 @@ do j=0, 3
     
     f='(I2.2)' !format
     write(conv,f) aimNodes !converts N to string
-
-    open(newunit=outunit, file='normalised'//trim(conv)//'.out', action="write")
+    open(unit=j, file='normalised'//trim(conv)//'.out', action="write")
     do i=1, N
-        write(outunit,*) x(i), V(i), psi(i)/(sum(psi)*dx)+E
+        write(j,*) x(i), V(i), psi(i)/(sum(abs(psi))*dx)+E
     enddo
-    close(outunit)
+    close(j)
 enddo
+    
+call analytic()
+
 end program bisection    
 
 subroutine potential(x,V,N,omega)
@@ -96,26 +101,24 @@ subroutine potential(x,V,N,omega)
     V=0.5*omega**2*x**2
 end subroutine potential
 
-subroutine shoot(x, V, N, E, dx, psi, aimNodes)
+subroutine shoot(x, V, N, E, dx, psi, aimNodes, j)
     implicit none
     integer :: i, outunit
     real*8, intent(in) :: E, dx
     character(len=8) :: f, conv
-    integer, intent(in)::N, aimNodes
+    integer, intent(in)::N, aimNodes, j
     real*8, dimension(N), intent(in) :: x, V
     real*8, dimension(N), intent(inout) :: psi
     !below code simply converts dimension N into a string for use in the file name
     f='(I2.2)' !format
     write(conv,f) aimNodes !converts N to string
-
-    open(newunit=outunit, file='bisection'//trim(conv)//'.out', action="write")
-    write(outunit,*) x(1), V(1), psi(1), E
-    
-    do i=2, N, 1
+    open(unit=j, file='bisection'//trim(conv)//'.out', action="write")
+    write(j,*) x(1), V(1), psi(1), E
+    do i=2, N
         psi(i+1)=2*(dx**2*(V(i)-E)+1)*psi(i)-psi(i-1)
-        write(outunit,*) x(i), V(i), psi(i), E
+        write(j,*) x(i), V(i), psi(i), E
     enddo
-    close(outunit)
+    close(j)
 end subroutine shoot
 
 subroutine countNodes(N, psi, nodes)
@@ -128,7 +131,46 @@ subroutine countNodes(N, psi, nodes)
     do i=2, N
         if(psi(i-1)*psi(i)<0) then 
             nodes=nodes+1
-            print*, "NODE FOUND:", i, N, i/N
+!            print*, "NODE FOUND:", i, N, i/N
         endif
     enddo
 end subroutine countNodes
+
+subroutine analytic()
+    implicit none
+    real*8 :: pi, e, dx 
+    integer :: outunit, i, N
+    real*8, allocatable, dimension(:) :: x, psi0, psi1, psi2, psi3
+    pi=3.14159
+    e=2.71828
+
+    dx=0.001
+    N=10/0.001
+
+    allocate(x(N), psi0(N), psi1(N), psi2(N), psi3(N))
+    
+    do i=1, N
+        x(i)=-5+dx*i
+    enddo
+    
+    psi0=pi**(-0.25)*e**(-x**2/2)!+0.5
+    psi1=pi**(-0.25)*2**(0.5)*x*e**(-x**2/2)!+1.5
+    psi2=pi**(-0.25)*(1/(2**0.5))*(2*x**2-1)*e**(-x**2/2)!+2.5
+    psi3=pi**(-0.25)*(1/(3**0.5))*(2*x**3-3*x)*e**(-x**2/2)!+3.5
+
+    psi0=psi0/(sum(abs(psi0))*dx)
+    psi1=psi1/(sum(abs(psi1))*dx)
+    psi2=psi2/(sum(abs(psi2))*dx)
+    psi3=psi3/(sum(abs(psi3))*dx)
+
+    psi0=psi0+0.5
+    psi1=psi1+1.5
+    psi2=psi2+2.5
+    psi3=psi3+3.5
+
+    open(newunit=outunit, file="analytic.out", action="write")
+    do i=1, N
+        write(outunit,*) x(i), psi0(i), psi1(i), psi2(i), psi3(i)
+    enddo
+    close(outunit)
+end subroutine analytic
