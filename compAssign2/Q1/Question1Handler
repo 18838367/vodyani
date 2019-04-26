@@ -1,0 +1,9 @@
+gfortran Question12.f90 -o Q1
+
+for i in {0..3}
+do
+    echo '1/10^'$i | bc -l | ./Q1
+done
+echo "Plotting ..."
+gnuplot Q1.plot
+echo "Done!"

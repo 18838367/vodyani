@@ -11,6 +11,7 @@ aimNodes=0
 
 dx=0.000
 read(*,*) dx
+print*, dx
 omega=1
 flag=0
 xmin=-5
@@ -79,8 +80,8 @@ do j=0, 3
         endif
     enddo
     
-    f='(I2.2)' !format
-    write(conv,f) aimNodes !converts N to string
+    f='(8F5.3)' !format
+    write(conv,f) aimNodes*dx+dx !converts N to string
     open(unit=j, file='normalised'//trim(conv)//'.out', action="write")
     do i=1, N
         write(j,*) x(i), V(i), psi(i)/(sum(abs(psi))*dx)+E
@@ -110,8 +111,8 @@ subroutine shoot(x, V, N, E, dx, psi, aimNodes, j)
     real*8, dimension(N), intent(in) :: x, V
     real*8, dimension(N), intent(inout) :: psi
     !below code simply converts dimension N into a string for use in the file name
-    f='(I2.2)' !format
-    write(conv,f) aimNodes !converts N to string
+    f='(8F5.3)' !format
+    write(conv,f) aimNodes*dx+dx !converts N to string
     open(unit=j, file='bisection'//trim(conv)//'.out', action="write")
     write(j,*) x(1), V(1), psi(1), E
     do i=2, N
