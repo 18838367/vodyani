@@ -1,22 +1,25 @@
 program Q3
 implicit none
-real*8 :: dR, k, rmax
-integer :: l, N, i
+real*8 :: dR, k, rmax, pi
+integer :: l, N, i, lambda
 real*8, allocatable, dimension(:) :: rb, num, r
 real*8, external :: riccati_bessel
-rmax=10000
-dR=0.01
+rmax=10
+dR=0.0001
+pi=3.14159
 N=rmax/dR
-l=1
-k=1
+l=2
+k=4
 
 allocate(r(N), rb(N), num(N))
 do i=1, N
     r(i)=i*dR
-    rb(i)=riccati_bessel(l,r(i))
+    rb(i)=riccati_bessel(l,r(i)*k)
 enddo
 
 call numerovForw(num, dR, N, r, l, k)
+lambda=ceiling(2*pi/k/dR)
+num=num/(maxval(num((N-lambda):N)))
 
 open(unit=100, file="Q3.out", action="write")
 do i=1, N
@@ -52,7 +55,7 @@ integer, external :: doubleFac
 real*8 :: S0, S1
 integer :: j
 
-if(x<0.02) then
+if(x<1) then
     S=(x**(l+1))/doubleFac(2*l+1)
 else
     S0 = sin(x); S1 = sin(x)/x - cos(x)
