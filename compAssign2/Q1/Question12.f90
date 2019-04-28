@@ -2,7 +2,7 @@ program bisection
 implicit none
 integer :: aimNodes
 character(len=8) :: conv, f
-real*8 :: Emax, Emin, dx
+real*8 :: Emax, Emin, dx, norm
 real*8 :: psi1, psi2, E, xmax, xmin, omega, tol
 real*8, allocatable, dimension(:) :: x, V, psi
 integer :: i, N, outunit, nodes, flag, j
@@ -17,7 +17,6 @@ flag=0
 xmin=-5
 xmax=5
 N=ceiling((xmax-xmin)/dx)
-print*, N, "NJNNNNNNNNN"
 allocate(x(N), V(N), psi(N))
 
 
@@ -37,7 +36,6 @@ do j=0, 3
     psi(2)=psi2
     tol=0.1
     
-    
     E=(Emin+Emax)/2
     call shoot(x, V, N, E, dx, psi, aimNodes, j)
     call countNodes(N, psi, nodes)
@@ -48,7 +46,6 @@ do j=0, 3
     elseif (nodes<aimNodes) then
         Emin=E
     endif
-    
     if(nodes==aimNodes) then
         if (psi(N)>0) then
 !            print*, "psiHigh", psi(N)
@@ -82,9 +79,12 @@ do j=0, 3
     
     f='(8F5.3)' !format
     write(conv,f) aimNodes*dx+dx !converts N to string
+    call simpsons(N, dx, psi**2, norm)
+    print*, "normalise", norm
+    print*, sum(psi**2/norm)*dx, "1111"
     open(unit=j, file='normalised'//trim(conv)//'.out', action="write")
     do i=1, N
-        write(j,*) x(i), V(i), psi(i)/(sum(abs(psi))*dx)+E
+        write(j,*) x(i), V(i), psi(i)/(norm**0.5)+E
     enddo
     close(j)
 enddo
@@ -139,8 +139,8 @@ end subroutine countNodes
 
 subroutine analytic()
     implicit none
-    real*8 :: pi, e, dx 
-    integer :: outunit, i, N
+    real*8 :: pi, e, dx, norm
+    integer :: i, N
     real*8, allocatable, dimension(:) :: x, psi0, psi1, psi2, psi3
     pi=3.14159
     e=2.71828
@@ -159,19 +159,44 @@ subroutine analytic()
     psi2=pi**(-0.25)*(1/(2**0.5))*(2*x**2-1)*e**(-x**2/2)!+2.5
     psi3=pi**(-0.25)*(1/(3**0.5))*(2*x**3-3*x)*e**(-x**2/2)!+3.5
 
-    psi0=psi0/(sum(abs(psi0))*dx)
-    psi1=psi1/(sum(abs(psi1))*dx)
-    psi2=psi2/(sum(abs(psi2))*dx)
-    psi3=psi3/(sum(abs(psi3))*dx)
+!    psi0=psi0/(sum(abs(psi0))*dx)
+!    psi1=psi1/(sum(abs(psi1))*dx)
+!    psi2=psi2/(sum(abs(psi2))*dx)
+!    psi3=psi3/(sum(abs(psi3))*dx)
 
+    call simpsons(N,dx,psi0**2, norm)
+    print*, norm, "norm"
+    call simpsons(N,dx,psi1**2, norm)
+    print*, norm, "norm"
+    call simpsons(N,dx,psi2**2, norm)
+    print*, norm, "norm"
+    call simpsons(N,dx,psi3**2, norm)
+    print*, norm, "norm"
     psi0=psi0+0.5
     psi1=psi1+1.5
     psi2=psi2+2.5
     psi3=psi3+3.5
 
-    open(newunit=outunit, file="analytic.out", action="write")
+    open(unit=787, file="analytic.out", action="write")
     do i=1, N
-        write(outunit,*) x(i), psi0(i), psi1(i), psi2(i), psi3(i)
+        write(787,*) x(i), psi0(i), psi1(i), psi2(i), psi3(i)
     enddo
-    close(outunit)
+    close(787)
 end subroutine analytic
+
+subroutine simpsons(N, dx, f, norm)
+implicit none
+integer, intent(in) :: N
+real*8, intent(in) :: dx, f(N)
+real*8, intent(out) :: norm
+real*8 :: w(N)
+integer :: i
+
+do i=1, N
+w(i) = 2.0d0 + mod(i+1,2)*2.0d0
+enddo
+w(1) = 1.0d0
+w(N) = 1.0d0
+w = w * dx / 3.0d0
+norm=sum(f*w)
+end subroutine simpsons
