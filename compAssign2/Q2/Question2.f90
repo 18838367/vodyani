@@ -1,140 +1,137 @@
-program Q2
+program Question2
 implicit none
-character(len=8) :: conv, f
-real*8, allocatable, dimension(:) :: psi1m, psimN, V, x, psi
-integer :: N, outunit, i, m, aimNodes, nodes, j
-real*8 :: omega, dx, Emax, Emin, xmax, xmin, E, tol, delE
-!______CONSTANTS & INITIALISATION
-omega=1
-dx=0.001
-xmax=5
+character(len=8):: conv, f
+real*8, allocatable, dimension(:) :: V, x, psiForw, psiBack, psi
+real*8 :: xmax, xmin, dx, E, Emax, Emin, omega, delE, tol, norm
+integer :: N, i, nodes, aimnodes, m, outunit, j, iterations
+
 xmin=-5
-tol=0.0001
+xmax=5
+Emin=0
+Emax=5
+dx=0.00
+read(*,*) dx
+print*, dx 
+omega=1
+aimNodes=0
+E=0
+N=(xmax-xmin)/dx
 nodes=666
-N=ceiling((xmax-xmin)/dx)
-m=ceiling(N/2.0)-2
-allocate(psi1m(m), psimN(N-m), psi(N), V(N), x(N))
+tol=0.000001
+
+allocate(x(N), V(N), psiForw(N), psiBack(N), psi(N))
+
 do i=1, N
-    x(i)=dx*i+xmin
+    x(i)=xmin+dx*i
 enddo
-call potential(x,V,N,omega)
-!______CONSTANTS & INITIALISATION
 
+m=(N/2)+1
+
+call potential(x, V, N, omega)
 do j=0, 3
-
-    Emax=4
-    Emin=0
+    iterations=0
     aimNodes=j
-    
-    !______Checking number of nodes
-    do while (nodes/=aimNodes)
-        E=(Emin+Emax)/2
-        call numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
-        call numerovBack(V, psimN, dx, E, N, m, x, aimNodes)
-        call countNodes(N, m, psi1m, psimN, nodes)
-        print*, E, Emin, Emax
+    Emax=5
+    Emin=0
+    do while(nodes/=aimNodes)
+        E=(Emax+Emin)/2
+        call numerovForw(V, psiForw, dx, E, N, x, aimNodes)
+        call numerovBack(V, psiBack, dx, E, N, x, aimNodes)
+        iterations=iterations+1
+        do i=1, N
+            if(i<=m) then
+                psi(i)=psiForw(i)/psiForw(m)
+            else
+                psi(i)=psiBack(i)/psiBack(m)
+            endif
+        enddo
+        call countNodesAlt(N, m, psi, nodes)
         print*, nodes
-        if (nodes>aimNodes) then
+        print*, E
+        if(nodes>aimNodes) then
             Emax=E
-        elseif (nodes<aimNodes) then
+            print*, "top"
+        endif
+        if(nodes<aimNodes) then
+            print*, "bottom"
             Emin=E
         endif
     enddo
-    print*, "Energy after node correct", E
-    !______Checking numer of nodes
     
+    !open(newunit=outunit, file="newNoded.out", action="write")
+    !do i=1, N
+    !    write(outunit,*) x(i), V(i), psi(i), psiForw(i), psiBack(i)
+    !enddo
+    !close(outunit)
     
-    !______Cooley Energy Correction
+    print*, E, delE
     
-    delE=0
-    do i=1, m
-        psi(i)=psi1m(i)
-    enddo
-    do i=1, N-m
-        psi(m+i)=psimN(i)
-    enddo
     call cooleyE(V, psi, dx, E, N, m, delE)
-    print*, delE
     
     do while(abs(delE)>tol)
-        print*, "E", E
-        E=E-(delE)
-        print*, "delE", delE
-        call numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
-        call numerovBack(V, psimN, dx, E, N, m, x, aimNodes) 
-        do i=1, m
-            psi(i)=psi1m(i)
-        enddo
-        do i=1, N-m
-            psi(m+i)=psimN(i)
+        E=E+delE
+        print*, E, delE
+        call numerovForw(V, psiForw, dx, E, N, x, aimNodes)
+        call numerovBack(V, psiBack, dx, E, N, x, aimNodes)
+        iterations=iterations+1
+        do i=1, N
+            if(i<=m) then
+                psi(i)=psiForw(i)/psiForw(m)
+            else
+                psi(i)=psiBack(i)/psiBack(m)
+            endif
         enddo
         call cooleyE(V, psi, dx, E, N, m, delE)
     enddo
-    
-    !_____Cooley Energy Correction
-    
-    !_____Format and write to file
-    
-    f='(I2.2)' !format
-    write(conv,f) aimNodes !converts N to string
-    
-    open(newunit=outunit, file='psi'//trim(conv)//'.out', action="write")
+    f='(8F5.3)' !format
+    write(conv,f) aimNodes*dx+dx !converts N to string
+    call simpsons(N,dx,psi**2,norm)
+    open(unit=j, file="normalised"//trim(conv)//".out", action="write")
     do i=1, N
-        write(outunit, *) x(i), V(i), psi(i)
+        if(j==2.or.j==3) then
+            write(j,*) x(i), V(i), -psi(i)/(norm**0.5)+E, E, iterations
+        else
+            write(j,*) x(i), V(i), psi(i)/(norm**0.5)+E, E, iterations
+        endif
     enddo
-    close(outunit)   
-    
-    !_____Formart and write to file
+    close(j)
 enddo
-end program Q2
+call analytic()
+end program Question2
 
 
-subroutine numerovForw(V, psi1m, dx, E, N, m, x, aimNodes)
+
+subroutine numerovForw(V, psi, dx, E, N, x, aimNodes)
     implicit none
-    integer, intent(in) :: N, m, aimNodes
+    integer, intent(in) :: N, aimNodes
     real*8, dimension(N), intent(in) :: V, x
-    real*8, dimension(m), intent(out) :: psi1m
+    real*8, dimension(N), intent(out) :: psi
     real*8, intent(in) :: dx, E
     real*8, dimension(N) :: g
-    integer :: i, outunit
-    psi1m(1)=0
-    psi1m(2)=(-1)**(aimNodes)*0.0001
-
+    integer :: i
+    psi(1)=0
+    psi(2)=(-1)**(aimNodes)*0.0001
     g=2*(V-E)
-    do i=2, m-1
-        psi1m(i+1)=(2*(1+5*dx**2/12*g(i))*psi1m(i)-(1-dx**2/12*g(i-1))*psi1m(i-1))/(1-dx**2/12*g(i+1))
+    do i=2, N-1
+        psi(i+1)=(2*(1+5*dx**2/12*g(i))*psi(i)-(1-dx**2/12*g(i-1))*psi(i-1))/(1-dx**2/12*g(i+1))
     enddo
-    open(newunit=outunit, file="numerovForw.out", action="write")
-    do i=1, m
-        write(outunit,*) x(i), V(i), psi1m(i)
-    enddo
-    close(outunit)
 end subroutine numerovForw
 
-subroutine numerovBack(V, psimN, dx, E, N, m, x, aimNodes)
+subroutine numerovBack(V, psi, dx, E, N, x, aimNodes)
     implicit none
-    integer, intent(in) :: N, m, aimNodes
+    integer, intent(in) :: N, aimNodes
     real*8, dimension(N), intent(in) :: V, x
-    real*8, dimension(N-m), intent(out) :: psimN
-    real*8, dimension(N-m) :: temp
+    real*8, dimension(N), intent(inout) :: psi
     real*8, intent(in) :: dx, E
     real*8, dimension(N) :: g
-    integer :: i, outunit
-    temp(1)=0
-    temp(2)=0.0001
-
+    integer :: i
+    psi(N)=0
+    psi(N-1)=0.0001
     g=2*(V-E)
-    do i=2, N-m-1
-        temp(i+1)=(2*(1+5*dx**2/12*g(i))*temp(i)-(1-dx**2/12*g(i-1))*temp(i-1))/(1-dx**2/12*g(i+1))
+    do i=1, N-2
+        psi(N-i-1)=(psi(N-i+1)*(1-dx**2/12*g(N-i+1))-2*(1+5*dx**2/12*g(N-i))*psi(N-i))/(-1*(1-dx**2/12*g(N-i-1)))
+       ! psimN(N-m-i)=(psimN(N-m-i+1)*(1-dx**2/12*g(N-i+1))-2*(1+5*dx**2/12)*psimN(N-m-i))/(-1*(1-dx**2/12*g(N-i-1)))
     enddo
-    do i=1, N-m
-        psimN(N-m-i)=temp(i)
-    enddo
-    open(newunit=outunit, file="numerovBack.out", action="write")
-    do i=1, N-m
-        write(outunit,*) x(i+m), V(i+m), psimN(i)
-    enddo
-    close(outunit)
 end subroutine numerovBack
 
 subroutine potential(x,V,N,omega)
@@ -146,37 +143,38 @@ subroutine potential(x,V,N,omega)
     V=0.5*omega**2*x**2
 end subroutine potential
 
+subroutine countNodes(N, psi, nodes)
+    implicit none
+    integer, intent(in) :: N
+    real*8, dimension(N), intent(in) :: psi
+    integer, intent(out) :: nodes
+    integer :: i, outunit
+    nodes=0
+    do i=2, N
+        if((psi(i-1)*psi(i))<0) then 
+            nodes=nodes+1
+        endif
+    enddo
+end subroutine countNodes
 
-subroutine countNodes(N, m, psi1m, psimN, nodes)
+subroutine countNodesAlt(N, m, psi, nodes)
     implicit none
     integer, intent(in) :: N, m
-    real*8, dimension(m), intent(in) :: psi1m
-    real*8, dimension(N-m), intent(in) :: psimN
+    real*8, dimension(N), intent(in) :: psi
     integer, intent(out) :: nodes
     integer :: i, outunit
     nodes=0
     do i=2, m
-        if(psi1m(i-1)*psi1m(i)<0) then 
-            print*, "NODE FOUND:", i, N
+        if((psi(i-1)*psi(i))<0) then 
             nodes=nodes+1
         endif
     enddo
-    do i=2, (N-m)
-        if(psimN(i-1)*psimN(i)<0) then
-            print*, "NODE FOUND:", i+m, N
+    do i=m+2, N
+        if((psi(i-1)*psi(i))<0) then
             nodes=nodes+1
         endif
     enddo
-    open(newunit=outunit, file="noded.out", action="write")
-    do i=1, N
-        if(i<=m) then
-            write(outunit,*) psi1m(i)
-        else
-            write(outunit,*) psimN(i-m)
-        endif
-    enddo
-    close(outunit)
-end subroutine countNodes
+end subroutine countNodesAlt
 
 subroutine cooleyE(V, psi, dx, E, N, m, delE)
     implicit none
@@ -184,14 +182,79 @@ subroutine cooleyE(V, psi, dx, E, N, m, delE)
     real*8, intent(in) :: dx, E
     real*8, intent(out) :: delE
     real*8, dimension(N), intent(in) :: psi, V
-    real*8, dimension(N) :: Y, g, delEArray
-
+    real*8, dimension(N) :: Y, g
+    integer :: outunit, i
+!    print*, E, "the big one"
     g=2*(V-E)
     Y=(1-dx**2/12*g)*psi
     delE=psi(m)/sum((psi)**2)*(-0.5*(Y(m+1)-2*Y(m)+Y(m-1))/(dx**2)+(V(m)-E)*psi(m))
-    print*, "--------X---------"
-    print*, psi(m+50)/sum(psi**2)*(-0.5*(Y(m+50+1)-2*Y(m+50)+Y(m-1+50))/(dx**2)+(V(m+50)-E)*psi(m+50))
-    print*, psi(m+101)/sum(psi**2)*(-0.5*(Y(m+1+101)-2*Y(m+101)+Y(m-1+101))/(dx**2)+(V(m+101)-E)*psi(m+101))
-    print*, psi(m), psi(m+1), psi(m-1)
-    print*, "--------X---------"
+!    print*, "_____ within"
+!    print*, delE, psi(m), psi(m-1), psi(m+1), sum(psi**2)
+!    print*, V(m), V(m-1), V(m+1)
+!    print*, Y(m), Y(m-1), Y(m+1)
+!    print*, g(m), g(m-1), g(m+1)
 end subroutine cooleyE
+
+subroutine simpsons(N, dx, f, norm)
+    implicit none
+    integer, intent(in) :: N
+    real*8, intent(in) :: dx, f(N)
+    real*8, intent(out) :: norm
+    real*8 :: w(N)
+    integer :: i
+    
+    do i=1, N
+    w(i) = 2.0d0 + mod(i+1,2)*2.0d0
+    enddo
+    w(1) = 1.0d0
+    w(N) = 1.0d0
+    w = w * dx / 3.0d0
+    norm=sum(f*w)
+end subroutine simpsons
+
+subroutine analytic()
+    implicit none
+    real*8 :: pi, e, dx, norm
+    integer :: i, N
+    real*8, allocatable, dimension(:) :: x, psi0, psi1, psi2, psi3
+    pi=3.14159
+    e=2.71828
+
+    dx=0.001
+    N=10/0.001
+
+    allocate(x(N), psi0(N), psi1(N), psi2(N), psi3(N))
+    
+    do i=1, N
+        x(i)=-5+dx*i
+    enddo
+    
+    psi0=pi**(-0.25)*e**(-x**2/2)!+0.5
+    psi1=pi**(-0.25)*2**(0.5)*x*e**(-x**2/2)!+1.5
+    psi2=pi**(-0.25)*(1/(2**0.5))*(2*x**2-1)*e**(-x**2/2)!+2.5
+    psi3=pi**(-0.25)*(1/(3**0.5))*(2*x**3-3*x)*e**(-x**2/2)!+3.5
+
+!    psi0=psi0/(sum(abs(psi0))*dx)
+!    psi1=psi1/(sum(abs(psi1))*dx)
+!    psi2=psi2/(sum(abs(psi2))*dx)
+!    psi3=psi3/(sum(abs(psi3))*dx)
+
+    call simpsons(N,dx,psi0**2, norm)
+    print*, norm, "norm"
+    call simpsons(N,dx,psi1**2, norm)
+    print*, norm, "norm"
+    call simpsons(N,dx,psi2**2, norm)
+    print*, norm, "norm"
+    call simpsons(N,dx,psi3**2, norm)
+    print*, norm, "norm"
+    psi0=psi0+0.5
+    psi1=psi1+1.5
+    psi2=psi2+2.5
+    psi3=psi3+3.5
+
+    open(unit=787, file="analytic.out", action="write")
+    do i=1, N
+        write(787,*) x(i), psi0(i), psi1(i), psi2(i), psi3(i)
+    enddo
+    close(787)
+end subroutine analytic
