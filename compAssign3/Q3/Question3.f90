@@ -1,16 +1,41 @@
 program Q3
 implicit none
-include "rsg.f"
-real*8, allocatable :: K(:,:), V(:,:), H(:,:)
-integer :: i, ell, num, N
+real*8, allocatable :: K(:,:), V(:,:), H(:,:), B(:,:), w(:), z(:), r(:), xi(:,:), phi(:)
+integer :: i, ell, num, N, ierr, j
 real*8 :: lam, rmax, dr
 ell=1
-lam=1
-num=1
+lam=2
+num=5
+dr=0.1
+rmax=10
+N=ceiling(rmax/dr)
+allocate(r(N), xi(num,N), phi(N))
+do i=1, N 
+    r(i)=dr*i
+enddo
+allocate(K(num,num), H(num,num), V(num,num), B(num,num), w(num), z(num))
 call Kmatrix(num, ell, lam, K)
 call Vmatrix(num, ell, lam, V)
+call Bmatrix(num, ell, B)
 H=K+V
 
+call rsg(num,num,H,B,w,1,z,ierr)
+print*, "Eigenvalues :", w
+print*, "Eigenvectors :", z
+
+call LagBasis(lam, ell, num, r, xi, N)
+do i=1,N
+    phi(i)=0
+enddo
+open(unit=400, file="phi.out", action="write")
+do i=1,N
+    do j=1, num
+        phi(i)=phi(i)+xi(j,i)
+    enddo
+    write(400,*) phi(i) 
+enddo
+close(400)
+print*, "Done!"
 
 end program Q3
 
@@ -21,18 +46,20 @@ integer, intent(in) :: ell, nm
 real*8, intent(out) :: B(nm, nm)
 integer :: i, j
 integer, external :: del
-
+real*8 :: temp1, temp2
 do i=1, nm
     do j=1, nm
-        B(i,j)=del(i,j)-0.5*((1-(ell*(ell+1)/((i+ell)*(i+ell+1))))**(0.5))*del(i,j-1)-0.5*((1-(ell*(ell+1)/((i+ell)*(i+ell-1))))**(0.5))*del(i-1,j)
+        temp1=del(i,j)-0.5*((1-(ell*(ell+1)/((i+ell)*(i+ell+1))))**(0.5))*del(i,j-1)
+        temp2=-0.5*((1-(ell*(ell+1)/((i+ell)*(i+ell-1))))**(0.5))*del(i-1,j)
+        B(i,j)=temp1+temp2
     enddo
 enddo
 
 end subroutine Bmatrix
 
-subroutine Kmatrix(nm. ell, lam, K)
+subroutine Kmatrix(nm, ell, lam, K)
 implicit none
-integer, intent(in) :: ell, nnm
+integer, intent(in) :: ell, nm
 real*8, intent(in) :: lam
 real*8, intent(out) :: K(nm,nm)
 integer :: i, j
@@ -80,7 +107,7 @@ e=2.71828
 call LagPol(num-1, 2*ell+1, r, N, L) 
 do j=1, num
     do i=1, N
-        xi(j,i)=((lam*factorial(j-1))/((j+1)*factorial(j+2*ell)))**(0.5)*(lam*r(i))**(ell+1)*e**(-lam*r(i)*0.5)!*L(j,i)
+        xi(j,i)=((lam*factorial(j-1))/((j+1)*factorial(j+2*ell)))**(0.5)*(lam*r(i))**(ell+1)*e**(-lam*r(i)*0.5)*L(j,i)
     enddo
 enddo
 
@@ -147,5 +174,4 @@ if(i==j) then
 else 
     f=0
 endif
-end function factorial
-
+end function 
