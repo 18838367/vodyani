@@ -4,11 +4,11 @@ real*8, allocatable :: r(:), xi(:,:)
 integer :: i, ell, num, N
 real*8 :: lam, rmax, dr
 dr=0.1
-ell=3
+ell=1
 rmax=10+ell
 N=ceiling(rmax/dr)
 num=6
-lam=3
+lam=2
 allocate(r(N), xi(num,N))
 do i=1, N 
     r(i)=dr*i
@@ -32,7 +32,7 @@ e=2.71828
 call LagPol(num-1, 2*ell+1, r, N, L) 
 do j=1, num
     do i=1, N
-        xi(j,i)=((lam*factorial(j-1))/((j+1)*factorial(j+2*ell)))**(0.5)*(lam*r(i))**(ell+1)*e**(-lam*r(i)*0.5)!*L(j,i)
+        xi(j,i)=((lam*factorial(j-1))/((j+1)*factorial(j+2*ell)))**(0.5)*(lam*r(i))**(ell+1)*e**(-lam*r(i)*0.5)*L(j,i)
     enddo
 enddo
 
