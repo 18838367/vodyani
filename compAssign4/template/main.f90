@@ -19,7 +19,7 @@ program main
     contwaves(:,:),  & !projectile radial continuum waves contwaves(r,k)
     DCS(:),          & !array to hold differential cross section - DCS(theta)
     theta(:),        & !array to hold values of theta - in degrees
-    ICS(:),          & !integrated cross section per l
+    ICS(:)             !integrated cross section per l
 
   real*8 :: &
     rmax,   & !max value of radial grid
@@ -31,7 +31,7 @@ program main
   complex*16, allocatable :: Ton(:) !on-shell T-matrix element per l
 
   integer :: &
-    i           & !do loop integer
+    i,          & !do loop integer
     nrmax,      & !number of rgrid points
     nkmax,      & !number of kgrid points
     zproj,      & !projectile charge 
@@ -41,7 +41,6 @@ program main
     ntheta,     & !an index to iterate over theta
     nthetamax,  & !max number of theta
     kg_Na, kg_Nb, kg_Np !some more parameters for setting up kgrid
-  
   !set kgrid parameters 
   ! leave this as is, or modify to read them in from input file
   ! if you want to play around with it and understand how the
@@ -81,7 +80,7 @@ program main
     call setup_kgrid(k, nkmax, kg_Na, kg_a, kg_Nb, kg_b, kg_Np, kg_p, kgrid, kweights)
   
   !>>> define short-range potential V(r)
-    V=1.0d0/(rgrid)
+    V=zproj*(1+1.0d0/(rgrid))*exp(-2.0d0*rgrid)
   !begin loop over angular momenta
   do l=lmin, lmax
     !populate contwaves matrix with a continuum wave for each off-shell k
@@ -107,14 +106,14 @@ program main
 
   !>>> output the DCS to file as a function of theta
     open(unit=200, file="DCS.out", action="write")
-    do i, nrmax, 1
+    do i=1, nrmax, 1
         write(200,*) theta(i), DCS(i)
     enddo
     close(200)
   !>>> either write the ICS to a file or print to screen
   !    in a way you can easily extract it using GREP
     open(unit=300, file="ICS.out", action="write")
-    do i, nrmax, 1
+    do i=1, nrmax, 1
         write(300,*) ICS(i) 
     enddo
     close(300)
@@ -141,17 +140,25 @@ subroutine compute_dcs(nthetamax, theta, lmin, lmax, Ton, k, DCS)
   complex*16, intent(in) :: Ton(0:lmax)
   real*8, intent(out) :: DCS(nthetamax)
   integer :: l, ntheta !loop indices
-  real*8:: PL !Legendre polynomials - from file plql.f
+  real*8 :: PL !Legendre polynomials - from file plql.f
   real*8 :: costheta !use this to store cos(theta in radians)
   complex*16 :: f(nthetamax) !scattering amplitude
 
   !>>> calculate the scattering amplitude f(theta) for each theta
   !    by iterating over l and using the partial-wave
   !    expansion of f
+    f=0
     
-    do l, (lmax-lmin), 1
-        f=f-3.14159/(k**2)*(2*l+1*Ton(l))*PL(cos(theta))
+    do ntheta=1, nthetamax, 1
+        print*, "dont kill me..."
+        print*, ntheta
+        do l=lmin, lmax, 1
+            print*, -3.14159/(k**2)*(2*l+1*Ton(l))*PL(costheta)
+            costheta=cos(theta(ntheta))
+            f(ntheta)=f(ntheta)-3.14159/(k**2)*(2*l+1*Ton(l))*PL(costheta)
+        enddo
     enddo
+    print*, "lol wut"
   !>>> obtain the DCS from the scattering amplitude
     DCS=abs(f)**2
 end subroutine compute_dcs
@@ -169,10 +176,10 @@ subroutine setup_rgrid(nrmax, dr, rgrid, rweights)
   !      - you can make use of the intrinsic MOD function for the 
   !        alternating 4, 2 terms
   !      - note the first weight of 1 has been skipped as we skip the point r=0
-    ir=1
-    do ir, nrmax, 1
+
+    do ir=1, nrmax, 1
         rgrid(ir)=dr*ir
-        rweights(ir)=2+2*MOD(ir)
+        rweights(ir)=2+2*MOD(ir, 2)
     enddo
     rweights(nrmax)=1
     rweights=rweights*dr/3.0
@@ -190,8 +197,8 @@ subroutine setup_contwaves(nkmax, kgrid, l, nrmax, rgrid, contwaves)
   
   !>>> iterate over k and r, populating the contwaves matrix
   !    (you may wish to parallelise this operation)
-    do nk, nkmax, 1
-        do nr, nrmax, 1 
+    do nk=1, nkmax, 1
+        do nr=1, nrmax, 1 
             contwaves(nr,nk)=riccati_bessel(l,kgrid(nk)*rgrid(nr))
         enddo
     enddo
@@ -209,8 +216,8 @@ subroutine calculate_Vmatrix(nkmax,kgrid,contwaves,nrmax,rgrid,rweights,V,Vmat)
   !    note: the V-matrix is symmetric, make use of this fact to reduce the 
   !          amount of time spent in this subroutine
   !    (you may wish to parallelise this operation)
-    do nkf, nkmax, 1
-        do nki, nkf, 1
+    do nkf=1, nkmax, 1
+        do nki=1, nkf, 1
             Vmat(nkf, nki)=sum(contwaves(:,nkf)*V*contwaves(:,nki)*rweights)*2/3.14159
             Vmat(nki, nkf)=Vmat(nkf, nki)        
         enddo
@@ -229,21 +236,30 @@ subroutine tmatrix_solver(nkmax,kgrid,kweights,Vmat,Ton)
     Kon,           & !on-shell K-matrix element
     Von,           & !on-shell V-matrix element
     A(nkmax-1,nkmax-1) !Coefficient matrix for the linear system Ax=b
-  integer :: j, ipiv(nkmax-1), info
+  integer, external :: del
+  integer :: i, j, ipiv(nkmax-1), info
 
   !>>> set up the coefficient matrix A for the linear system
+    do i=1,nkmax-1, 1
+        do j=1,nkmax-1, 1
+            A(i,j)=del(i,j)-kweights(j+1)*Vmat(i+1,j+1)
+        enddo
+    enddo    
+    
  
   !>>> store the RHS of the linear system in Koff
-  
+    do j=1, nkmax-1, 1
+      Koff(j)=Vmat(j+1,1)
+    enddo
   call dgesv( nkmax-1, 1, A, nkmax-1, ipiv, Koff, nkmax-1, info )
   if(info /= 0) then
     print*, 'ERROR in dgesv: info = ', info
   endif
 
   !>>> calculate the on-shell K-matrix element (Kon)
-
+    Kon=Koff(1)
   !>>> calculate the on-shell T-matrix element (Ton)
-
+    Ton=Kon/(1+CMPLX(0,1)*3.14159*Kon/kgrid(nkmax))
 end subroutine tmatrix_solver
 
 real*8 function riccati_bessel(l,x) result(RB)
@@ -284,6 +300,18 @@ do while(i>1)
     i=i-2
 enddo
 end function doubleFac
+
+!provides behaviour of a delta matrix (identity matrix)
+integer function del(i,j) result(f)
+implicit none
+integer, intent(in) :: i, j
+
+if(i==j) then !i.e. if not on the diagonal then zero
+    f=1
+else 
+    f=0
+endif
+end function 
    
 
 !A subroutine provided for you to set up the kgrid and kweights
